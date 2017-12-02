@@ -1,0 +1,733 @@
+Tuesday 22 August 2017
+
+The aim at the moment is to build a simulator for the bike.  This is so that the most important and difficult parts, the control and the vision, can be solved first, before spending time on implementation details such as choosing and designing physical components.  The idea is that the design is done at a high level of abstraction first, gradually filling in the details.  Hence the first step is to design the whole simulator using English / maths / diagrams, and only write the code when this is complete.  This will be done in the 'bikeproject/bikesim' folder of the main 'doc' directory.  The work will be done very thoroughly, with first all the main problems solved and documented in natural language, then a full test suite written, and then finally the code.
+
+DESIGN OF CONTROL SYSTEM
+
+There are two main parts, keeping the bike upright, and navigation.  It should make the system simpler if they are separated, but can they be separated? A human rider would depend on their sight for balancing as well as the ear canal sensors etc for keeping upright and controlling the bike, so it seems sensible to include visual sensors in the control problem.
+
+For the navigation, the problem consists of changing the bike state from the current one to the desired one while optimising some parameter, such as the time taken to change the state, and given constraints on other parameters, such as risk of injury of pedestrians.  The number of different possible instruction sets that can be given to the bike is large.  There are many uncertainties, such as obstacle locations and component failure and variation.
+
+The bike will need to plan a path, i.e. a continous set of states in its state-space with one end being the current state and the other end being the desired state.  The problem is that there will be many unknowns that are necessary in order to plan the path, such as bumps on the road or junction lights or component failure.  The robot will have to make assumptions for all these unknowns.  These assumptions will often be wrong, so during the journey the bike will be continuously comparing its state with the path and adjusting itself to push it towards the path.
+
+But what is the difference between wanting to be on the path, and wanting to be at the ultimate destination?  That is, planning the path still does not answer the question 'What sequence of actions will move the robot from the current state to the desired one?'.  
+
+There are a relatively small set of low level state changes that are already available to the control program. For example: 'apply anticlockwise torque to steering column'.  The whole task of the controller is to combine these basic commands so that state changes such as driving from one address to another in a city are possible.
+
+The sequence of events in the controller are then:
+1) given a desired state, decide if there is a path (sequence of states that can be travelled along using basic actions) to that state.  If there is, then calculate it, making reasonable assumptions in place of unknowns.  There will be a set of constraints on various parameters that the path has to satisfy, and a parameter to optimise.  If there is no possible path to the desired state and/or the current state is not known, then return an error message and exit.
+2) see which basic actions are available (i.e. not broken), compare the current state to the path and decide if there is one or more basic actions that can be run to move the current state onto the path.  If there is then do it.  If not then go back to step 1.
+3) if a new desired state has been given by the user, go to step 1, else go to step 2
+
+This sequence of actions runs continuously unless an error is detected.  The possible detectable errors are:
++ the current state is not known, say if a vital sensor is broken
++ no path can be found to the desired state that meets the constraints.  This is always because of the physical constraints of the machine.  The machine may be fully working and too much is being asked of it by the user, or it may be that it has detected that a component has broken and it is not able to manage with what is left.
+
+The robot could still fail to reach its destination even if the loop never exits.   This could happen if a component is malfunctioning but appears to be working.  Some possible causes are:
++ a sensor that gives wrong readings that can't be detected as being wrong
++ a malfunctioning actuator that appears to be working
+
+Wednesday 23 August 2017 
+
+At the moment I am working on how the next action calculator will work.  Its inputs are the history of program inputs, such as sensor readings and user inputs.  Its output is a schedule of jobs to do that will start the change from the current state to the desired state.  The number of jobs in the schedule needs to be enough to keep the robot busy till the next lot of jobs can be calculated.
+
+Since usually the user will have a decent idea of the capabilities of the robot, mostly there will be at least one possible way that the robot can change its state to the desired one.
+
+Perhaps the robot will have a combination of knownledge and assumptions that enable it to have a global map of all its possible configurations.  That would be a very large space.  For example a street map would give the possible GPS locations that the robot can take, or it will have programmed into it the range of lean angles that are possible.  OK, so it will have this map of all its possible configurations.  It will know its current configuration and the desired one, which will presumably both be inside this big map of possible configurations.  The map will always be incomplete though.  For example the street map would not contain information about potholes that could upset the motion, and it will not be known at what times the traffic lights will be red.  It could use Djiska's algorithm to find the shortest route through the streets, but that wouldn't be enough to tell it how to orient itself on the road.  It also seems a bit pointless precisely calculating all the motions near the end of the journey, as they will almost certainly not be correct by the time it arrives there.  A possible idea is a sort of zooming-in approach: take a very broad view to start with, such as planning the route along the street map, and then zoom in to the current position and calculate the exact movements. 
+
+
+There are usually going to be very many possible ways to get to the destination.  There will also be some parameter, such as journey time, to be optimised.  I'm thinking about a very generalised Djiska's algorithm, so instead of finding a route through two parameters (x and y), while optimising some parameter (such as distance), it will navigate through many parameters, such as lean angle, x, y, time, etc.  I've no idea how to implement this.  I'm stuck here.  Need to do some reading.
+
+It seems from the Wikipedia article on Motion Planning that sample-based motion planning is the current state-of-the-art.  I have found a good review of the literature on it (see citation Elbanhawi2014).
+
+Thursday 24 August 2017
+
+Am reading a review of sample-based motion planning research (see Elbanhawi2014).  This is so I can write the section on calculating the next actions.
+
+Utility-RRT looks good (see reference 100 in Elbanhawi2014).
+
+Closed Loop RRT looks good (see reference 77 in Elbanhawi2014).
+
+So what is the way to do the route planning? 
+
+I think it might be possible to make the drive controls higher level than just putting in the voltages for the motors.  The input to this system would be the velocity of the contact point of the front wheel, that is, its direction and speed.  But maybe the route maker needs to take into account the instability of the system.
+
+My explanation of RRT to try to get it clear in my head:
+--------------------------------------------------------
+
+The purpose of RRT is to get from initial configuration to desired configuration while optimising some parameter and meeting some constraints.  It works by randomly growing a tree-shaped path within the allowed space.  
+
+1) Generate a random configuration.
+2) Test if this new configuration meets the constraints.  If it does then go to the next step, if not then go to step (7).
+3) Choose the configuration in the existing tree that is closest to the new random one using some cost function.
+4) Work out how to move towards the new random configuration.  If it is not possible then try to find an intermediate configuration and discard the random one.
+5) Check that the path to the new configuration is free of collisions.  If it is then add it to the tree and go to the next step.  If it is not then discard it and go to step (7).
+6) Compare the new configuration with the goal.  If they are the same then exit.  Else go to next step.
+7) Compare the number of iterations so far with the maximum allowed.  If the maximum is exceeded then exit.  Else go to step (1).
+
+Friday 25 August 2017
+
+If the bike was stable, say if it was a tricycle, then I can see how RRT would work for moving it from A to B.  I need to abstract away the balancing side of things, so that the basic commands are setting the velocity of the front wheel contact point.  Then there can be another control system underneath that takes in the desired front wheel contact point velocity and does its best to make the bike actually do it.  So the first thing is to make this underlying controller.  I am not sure if the linearised equations of motion from meijaard07 are good enough for low speed.  I think I need to reread it.
+
+Now I'm thinking about how to deal with the low-level controller that takes in velocity requests for the front wheel contact point and the sensor history, and outputs low-level commands, such as motor voltages.
+
+The problem with it is that there are three errors to be minimized: 
+1. velocity direction relative to required
+2. velocity magnitude relative to required
+3. lean angle relative to vertical
+
+I don't think it's possible to minimize three things at once.  What do you do if reducing one error increases another?
+
+To reduce error (1) the bike should move the steering in the required direction.  To reduce error (2) the bike should adjust the speed of the drive motor.  To reduce error (3) the bike should steer in the direction of the fall (by how much?) and drive forwards (by how much?) or vice versa (steer the other way and drive backwards).  Staying upright (3) takes top priority, direction (1) is second priority, and speed (2) is third priority.  But what about when you need to be stationary?
+
+One possible method is to set the motor voltages each as a linear combination of past inputs.  This might well work - it's basically a PID-type system.  It should be simple to program.  Finding the parameters could be done by making an error function that takes the parameters as input and produces a single error value as output.  This function could contain the linearized bike model from meijaard07.
+
+It's almost certainly going to be better to use a neural net for this, because the bike probably going to behave in a non-linear way.  A neural net should be much more flexible and should give a better result.
+
+Whichever method is used, it would be nice, and should be possible, to train it while in use.  This should allow the bike to adjust to changing circumstances.
+
+Have been reading about the Kalman filter.  From my brief read on Wikipedia, it uses a bunch of sensor history data to predict an accurate current value.  It sounds very useful for this application.
+
+Have been having a brief Google for how to train a neural net for a controller.  I'm struggling to find good up-to-date stuff about this, but it shouldn't be too hard to do it with what I know.  The key thing is working out the error function.  So the input to the net is some sort of route information and the current state.  It could be three parameters s, d, r, to give the velocities and the angular velocity.
+
+It's really important too that the energy usage is reduced in the control system.  So I could say if the lean angle, speed and direction errors are kept within certain constraints, then optimise the power consumption.
+
+Saturday 26 August 2017
+
+I don't know enough about using neural nets for control so the task today is to read about it.  There is also the idea of using fuzzy logic for control.  I have found a paper (see hagan02) that says it is an introduction to the use of NNs for control, and there is a Wikipedia article on fuzzy logic in control.
+
+I still haven't decided what the high-level input to the balancing controller should be.  The two candidates in my mind at the moment are:
+
+1) velocity of front wheel contact point.  I can imagine this in a scenario where a person is doing the high-level control with a remote-controlled robot bike toy.  The person has a joy-stick on their remote control and uses it to set the velocity and make the bike move around.
+
+2) a desired configuration.  So this nicely separates the high-level and low-level control: the low-level assumes that there are no obstacles and the high-level deals with obstacles.  The low-level one would be sufficient in a large smooth plain.  You could just set a goal configuration and it would go and do it.  The high-level controller would be necessary for navigating around streets.
+
+At the moment I have an instinctive preference for (2).  Am now going to read hagan02, which is an introduction to using neural nets for control.
+
+Training procedure for the net:
+
+A good result is if the net gets the bike to the right place at the right orientation without falling over in a short amount of time without using much energy.  The problem here is that what if it could get it there faster, but using more energy?
+
+Just for now, forget about the time for the journey and the energy.  The orientation/position error can be expressed as a single number, since they can all be expressed in terms of distance error, which can just be summed, because the units are comparable.  The other constraint is that the thing mustn't fall over.
+
+What I'm thinking now is that it could have a subcontroller, which is tasked solely with keeping the bike upright.  All it will do is watch to see if the bike lean angle is greater than, say, 10 degrees (it should be such that it is as great as possible without being unrecoverable).  When it activates it will take action to stop itself falling over.  The only goal of this control system is to not fall over.  It totally ignores other constraints like desired route or energy efficiency etc.
+
+Then the higher-level controller can train itself without falling over, because the low-level one will kick in whenever it leans over too far.  Ideally, when fully trained, the lower-level controller will never get used, because the wobbly unguided motion it gives will increase the distance error function used to train the neural net.
+
+My intuition is that training the net on minimising the distance to the goal will also give a short journey time and low energy consumption.
+
+Monday 28 August 2017
+
+So the job today is designing the naive controller that navigates the robot from point to point and assumes that there are no obstacles.  The error to minimize over a journey from destination to goal is the ratio of the actual distance travelled to the perpendicular distance along the straight-line route.  There will be a basic sub-controller that will only kick in when the bike is about to fall over.  The problem is: how to train the neural net that will do the control?  I need it to be self-learning, because I don't know how to do the manouvre myself and therefore can't train it.  The output of the neural net is the two voltages for the motors.  The input is the desired destination and the various state parameters.  Am going to now read that old paper about backing up a lorry.  I started reading, but then realised that I already know how to do this.  In order to train a neural net, I need:
+1) A configuration.  In this case I have an input neuron for each state parameter and each one gets given the desired CHANGE IN STATE.  So if I want to move the x-coordinate from 1 to 4 then the input is 3.  Say there are about 10 of these parameters.  Then I need a hidden layer of, say, 6 neurons (see nnRuleOfThumb).
+2) A way to calculate the error value.  So you give the net a certain input and it gives you the two voltages for the output.  These voltages are then fed into the simulator, which works out the resulting configuration after a short time interval, say 0.2 seconds.  The error can then be worked out from the extra distance travelled from the straight-line route.
+
+Then the trainer can just keep randomly generating a new configuration and start driving towards it, step by step, training itself at each step.  When the destination is reached it can generate another and keep on going.  To start with I can use the model from meijaard07, but when I have a real prototype it should be able to train itself by lurching around for a while and slowly tightening up.  When trained, the bike should be concerned with travelling the shortest possible route, but not bothered about speed.  This should be good, because if it optimises travel time then there would probably be a lot of hard acceleration which will use up the battery like anything.
+
+A massive problem with this whole method has just occurred to me though.  How can you control speed?  There will be many situations when it is required to set a maximum speed.
+
+The answer is that the maximum allowed speed must be one of the input parameters.  This will be used when calculating the error value.
+
+I have just had another look at nguyen90 (truck backer-upper using a neural net).  What they do is first they train a neural net to emulate the truck, and then they use it to train the controller with.  Their error function is a linear combination of all the things they want less of, with the weights picked by hand to give the trainer an idea of how important various things are.  It seems a bit rough, but they say they get good results.  Also, they train over the whole manoeuvre, not just step by step and stop each training step when the truck 'hits something'.  I think I should do a similar thing, but I will have to put in a limit like time or distance on each training step if it doesn't reach its goal.  It also makes sense to me that when I get to using a real prototype I will want to train an emulator and then train the controller using the emulator.
+
+It also makes sense to me that when I get to using a real prototype I will want to train an emulator and then train the controller using the emulator.  If it is possible to create the emulator with a smaller nn than the controller then the overall training time should be reduced.
+
+The big problem that has cropped up now is how to fix the current state, especially the location.   The GPS will probably be pretty cheap, and a quick Google tells me that it could well be 10m out.  Hence the other sensor readings will be needed to beef it up.  I could get reasonable velocity figures from measuring the wheel turns.
+
+Wednesday 30 August 2017
+
+I'm working on the object detection and tracking.  I have found what looks like a very good, very fast neural net for tracking in helm16.   I could detect obstacles with specifically trained convolutional neural nets.  But what about unknown obstacles?  What about a dustbin blown into the road?  Am I going to have a specific dustbin neural net?  It's absurd.  It means that I will have to train 100s of neural nets and feed every single frame through all of them, which will take far too much development time and will make the bike take much too long to process each frame.
+
+So the current idea is to:
+
++ on frame 1, detect all the obstacles using specific obstacle neural nets, such as a person detector, a car detector etc
+
+Thursday 7 September 2017
+
+I think this idea of using a separate net for each type of object is dead.  There will have to be too many nets and everything will slow down to a bog.
+
+My new idea for the object detector is to have a recurrent neural net with all the camera pixels fed into it.  There will probably have to be some convolutional layers at the input to preserve location information.  The output will be a horizontal grid overlayed on the obstacle map and centred on the robot, with two neurons for each cell.  Each cell will have a velocity relative to the ground, i.e. a magnitude and a direction.
+
+New idea is to have the cell values be a period of time till that the cell will be free for.  As always, the big problem now is how to train the net.  I need loads of training data.  I can't actually generate realistic-looking cars/people/etc, for my simulation, but I don't think this system actually needs to know the difference between cars and bikes etc.  
+
+I don't think it is possible to generate good training data for this problem.  The road system is just too complicated.  This means that I will have to go out and gather the data by cycling around.  Since this will require a good bit of expenditure on sensors, a computer, etc, it would be a good idea to make a simulator, although much simpler than a real road environment, just to test the software and make sure it all works before spending the money on the components.
+
+Monday 18 September 2017
+
+I have decided to use Python, at least for the neural net stuff, because there are so many good libraries for it.  It seems that Tensorflow is the big, popular, fashionable nn library, and Keras is a nice simple front-end for it, so I will use that.  Before I can write the tests for the navigation neural net I need a simulator of the world+bike to run it on.  At the moment I am working out the trig for the camera views of the simulated objects.
+
+This trig is bogging me down.  I think I need to do it again in Latex, so it is all clean and I can do corrections.
+
+Saturday 23 September 2017
+
+I am working on the simulator.  I have done the function that converts the world state into a set of sensor readings.  Now I am working on the function that increments the state of the simulator.  Really what it needs to do is to handle all the bike dynamics stuff (probably there should be a separate module that steps the bike state that this one calls), and also keep up a reasonable number of obstacles buzzing around at constant velocity reasonable close to the bike.  There shouldn't be vast areas with nothing in them, but it shouldn't be so thick that the bike can't avoid things.
+
+Tuesday 26 September 2017
+
+I am working on the bike simulator, like I did in crashbike.  I am using ref meijaard07 for it.  It gives the equations of motion for the linearised bicycle.  The ideal solution would be an analytical solution to the equations so I don't need to do any numerical integration, but I remember that I wasn't able to do that before, so it may not be possible.  The variables that I need for the simulation are:
+
++ lean angle (phi)
++ position (x, y)
++ orientation (psi)
++ steering angle (delta)
++ speed (v)
+
+(see diagram on page 9 of meijaard07).
+
+I multiplied out the matrices in the main equation from meijaard07 and typed them into wxmaxima to solve using the desolve function.  I used desolve because it was the only ode solver I could find that could cope with a system of odes.  It uses Laplace transforms.  It couldn't cope.  It did produce some output (see docs: bikeproject/simulateworld/bikemodel/direct_desolve_method.wxmx) but it contained unevaluated inverse Laplace transform expressions.  I'm thinking this is probably too tough and I will need to use numerical methods, but before I give up I'm trying the Laplace transform method by hand.
+
+After more fiddling with wxmaxima and wolfram alpha, I think these equations are just too complicated to solve analytically.  I'm just going to have to use numerical methods inside the program instead.
+
+Monday 2 October 2017
+
+The simulator is done.  The problem now is setting up the main navigation neural net.  I am thinking of feeding a convolutional net with a history of images rather than using a recurrent nn.  The reason is that I want my nn to be purely functional, i.e. to have no memory, so I can later on do more parallelisation.  If I stitch the four camera images side by side, and go back in time by 5 images, then I will have an input tensor of shape 200 x 200 x 3 x 5.  I will use the stride to reduce dimensions, not max pooling.  There will be 3 convolutional layers and two fully connected layers.
+
+The output is a grid overlaid on the street map.  The maximum speed of anything in the environment will be about 60 mph = 27 m/s.  What I'm getting at here is:  How big should the output grid be?, and how big should each square be?  It should be as small as possible.  It should be big enough to take in all of the useful obstacle information.  Say it extends up to 100m from the bike.  This circle, with the bike at the centre, is divided up into roughly square segments which grow larger as the radius increases.  The circle is divided into 120 slices, like slicing a cake into 120 pieces, with 92 neurons representing each slice.  These encode the distance away inside the slice.  The first 1m from the centre of the circle is not filled.  The distance between the concentric circles outside this, each encoded by 120 neurons, is such that the areas represented by each neuron are as square as possible.  So there are 120 x 92 = 11040 output neurons.
+
+Since there are 6e6 inputs and 11e3 outputs then if the net has 3 convolutional layers and 2 fully connected layers, there are 3 hidden layers, each of which should reduce the dimensionality by about an equal factor, say.  So if the reduction factor is x, then:
+
+6e6 x^4 = 11e3
+==> x^4 ≌ 1.8e-3
+==>   x ≌ 0.21
+
+So the second layer should have about 1.2e6 neurons, the third layer about 240e3 neurons, the fourth layer about 48e3 neurons, and the final layer 11040 neurons. 
+
+
+
+This is the plan for the layout.  I will have to experiment with it to improve it:
+
+Tuesday 3 October 2017
+
+input:  200 x 200 x 3 x 5
+1st convolutional layer: 200 x 200 x 1 x 5 x 10, stride (1, 1), 3x3 kernel (2e6)
+2nd convolutional layer: 100 x 100 x 1 x 3 x 20, stride (2, 2), 20 layers (600e3)
+3rd convolutional layer: 50 x 50 x 1 x 2 x 40, stride (2, 2), 40 layers (200e3)
+4th convolutional layer: 25 x 25 x 1 x 1 x 60, stride (2, 2), 80 layers (38e3)
+FC layer: 20e3 neurons
+Final layer: 11040 neurons
+
+Wednesday 4 October 2017
+
+I've been experimenting with different configurations for the navigation neural network.  I haven't done any training yet, but have been trying to get the evaluation speed down to something that looks possible to run live on a raspberry pi.  The layout that seems to work is to process each set of images as it comes in with a cascade of convolutional layers, and then to have a separate single fully-connected layer that can take in a stack of 5 sets of outputs from the initial net and produce the final street map.  This runs in about 0.07s on my laptop, which is a feasible sort of speed if it is going to run ~ 5 times per second on the Pi, plus doing all the other work.  It might be that I have to have 2 Raspberry Pis, but it is of a doable order of magnitude.
+
+The next step is to work on how to train the net with data generated by the simulator and see how it does.  To do this I need some sort of error function.  Some possibilities for this function are:
+
+1. I could write the route planner part now as well, and have the error be the number of times in a run that the bike comes within, say, 1m of an obstacle.
+2. I could add something to the simulator, which will generate a freeness map of the surroundings.  On the face of it this seems better: faster and more direct, but it might be tricky to calculate.  The main problem is about blanking out the areas that are out of view of the bicycle.  Though, having said that, it should be possible.
+
+I like (2) better than (1).  So I need a new module that will provide a function that will take in the state of the world and convert it to a freeness map.  Then I can have the bike driving along a random route.  I can use the world state to generate input images and feature maps to train the net on.  The error can be the sum of the absolute differences between the corresponding cells of the actual feature map and the predicted one.
+
+Saturday 7 October 2017
+
+The issues at the moment are:
+1) the form of the output of the navigation neural net
+2) how to train it
+
+With respect to (1), I have thought of a better method than a grid overlaid on the ground surrounding the bicycle.  Each cell in the grid was going to have a number in it representing the amount of time till it was obstructed by an obstacle.  So a stationary obstacle would have a zero.  The problem with this is that having an output neuron per grid cell means that the neural net will have to have about 10000 outputs.  The problem with this is that if there are 2 or 3 fully-connected layers at the output then there an awful lot of weights.  Even with this many outputs it is tricky to make sure both that no accuracy is lost by discretizing the map, and that on the other hand there isn't a higher resolution than is justified by the accuracy.
+
+The new idea is to not have a map, but a list of regions, each with a time rating which says how long it will be unoccupied for.  Each region is a circle, so a region is fully defined by an x-coordinate, a y-coordinate, a radius and the time rating, so four parameters in all.  Then the output of the neural net is, say, a 100 x 4 array, with each row representing a region.
+
+With respect to (2), I need to be able to generate an error value for the output of the neural net.  The training process will work like this:
+
+a) generate 5 realistic world states at the correct time intervals
+b) feed these five states into the neural net, generating a list of obstacle regions
+c) evaluate an error for each of the obstacle regions and sum up the errors
+
+For (c), I need a function that takes in an obstacle region and the world state and outputs an error.  The error is a positive float.
+
+* * *
+
+After starting to write the code for this I am realising two things:
+1. The code is actually pretty tricky to write.  Doable, but quite tricky.
+2. Really this trainer should use simulated data that is in the same form as the real training data will be.  After all, the whole point of the simulator is to iron out problems before setting up the physical prototype. 
+
+The form of the real data will be a time-varying bunch of
+
++ camera images,
++ steering angles,
++ sideways acceleration,
++ gps readings and
++ velocities.
+
+I don't think it will be possible to measure the drive torque, but the velocity should be fairly easy by counting wheel turns.
+
+So then what do I do with all this data?  The navigation net will use the images and the controller will use the acceleration, steering angle and velocity.  The position calculator will use the gps readings.
+
+* * *
+
+BUT, on the other hand, the navigation neural net is definitely the hardest part of the whole project.  I think it is good to get some feedback at this point about whether it is feasible, and be able to do some quick training and reconfiguring of the neural network.
+
+SO: I decide that I'm going to have another bash at the error calculator.
+
+The error for a freeness that is intersected by the path of an obstacle is:
+
+        ( (time till obstacle hits freeness) - (freeness rating) )
+    abs ( ------------------------------------------------------ )
+        (    (proportion of freeness area swept by obstacle)     )
+
+But what about the error for a freeness that is way out somewhere and doesn't get touched by an obstacle?  It should be bigger for a bigger freeness and bigger for a smaller free time.  (It is assumed that places that aren't covered by a freeness are free). 
+
+Look at it like this:  
+
+Effectively, the freeness list parcels up the whole area of the world, if it is assumed that areas not covered by freenesses have infinite freeness, and that overlaps between freenesses take the value of, say, the lowest freeness.
+
+Monday 9 October 2017
+
+The problem today is to make the error function for the navigation neural net.  This function will have inputs:
+1) The state of the simulated world.
+2) The list of freenesses from the neural net.
+and output a single positive float that is the error.
+
+Tuesday 10 October 2017
+
+I'm just finding it too hard to write the navigation net error calculation function using geometrical methods.  I think now I will try it by using a big numpy array to represent the area.  The problem with this is that it will have 1000,000 cells and will have to be looped over several times.  Actually this is probably all right.
+
+It's just really tricky to do, this.  I'm going to try building the rest of the program and training in place.  Here's a quote from this log from a few days ago:
+
+"""
+The form of the real data will be a time-varying bunch of
+
++ camera images,
++ steering angles,
++ sideways acceleration,
++ gps readings and
++ velocities.
+
+I don't think it will be possible to measure the drive torque, but the velocity should be fairly easy by counting wheel turns.
+
+So then what do I do with all this data?  The navigation net will use the images and the controller will use the acceleration, steering angle and velocity.  The position calculator will use the gps readings.
+"""
+
+Maybe it's not too hard.  I need to carry on a bit more I think.
+
+Monday 16 October 2017
+
+I need to generate data for my neural net.  At the moment I'm not sure how to make loss functions, so for now I am using a neural net with two convolutional layers and an output of 1000,000 values that I can use for a 200 x 200 m world with 0.2 m grids.  So the data I need is a load of bunches of 5 sets of input images (that is, numpy arrays of 200 x 200 x 5 x 3) and a load of bunches of 1 x 1000,000 for the output.  These can be easily generated from worldstates.  From the Keras documentation, I know that the input data should just be massive numpy arrays.  Say I can train for 24 hours at 10 cycles per second.  That's 24 x 3600 = 86400 separate bits of data.  Say I make 100,000.  Will this fit in memory?  I will need 200 x 200 x 5 x 3 x 100,000 = 6e10 uint8s, which is 4.8e11 bytes = 480 Gb.  What I could do is start off with generating and training on a lump of data that will fit nicely in RAM, and when I have got this to work I can put the whole thing inside a loop and keep on training.  Maybe 100Mb at a time?  Say 20 lots in a go.  
+
+So I need a function that generates an input array and an output array.  The input array is 20 x 200 x 200 x 5 x 3, and the output array is 20 x 1000,000.  I'll actually make a separate module that does this.
+
+(The thing that is sitting in my mind and bugging me at the moment is how to generate this sort of data for real?  I can only record steering angle when I am riding around, not the obstacle map itself.  The only thing I can think of is to try to make it a differentiable function.  On the face of it this seems very tricky, because it will have to include a whole load of the program, like the route finder and the balancer.
+
+I feel like this is actually a solvable problem even though I don't know what the solution is yet.  I think I'll just leave it for now.)
+
+Tuesday 17 October 2017
+
+Today I have started training the navigational neural net for the first time.  It is the first time I have ever built and trained my own neural net.  The input is the set of images from the cameras (simulated) and the output is a 1 x 1000,000 array that represents a map of the ground, 1000 x 1000, which is a 200m x 200m square with 0.2m grids.  The current net only has twolayers, both convolutional, which I very much doubt is enough.  The tricky thing is that having fully-connected layers at the output, which I think I should, is very time-consuming when there are 1000,000 outputs.  Even without, it's taking a long time to train.  Generating the data is reasonable, but running the training is pretty slow (see commit ecc5aaa8ae0aef0f8870a33adbc4bec80dc8ba5b).  Another problem with big fully-connected layers is that they use an awful lot of parameters.  Just as a rough ball-park, I don't think I should be over the low hundreds of thousands of parameters.  The MNist fully-connected network on the Youtube tutorial had 8000 parameters, so I feel that about 10 times as much is reasonable for this.
+
+My new idea is that I first feed the images into a covnet of several layers and then the output of this into a fully-connected network of maybe 3 layers, culminating in perhaps 50 outputs, which represent angles.  These will probably be between 0 and 1 and will represent how free that particular angle is.  The problem is how to train this.  The training data will be a bunch of images plus the steering angle over and over again.
+
+So a better idea might be that the images are fed through some convolutional layers and reduced down to, say, 100 values.  Then these plus the steering angle REQUIRED BY THE MAP PLANNER is fed into, say, 3 fully-connected layers, which give a single softmax output, which represents the new steering angle.
+
+But what about speed?  Ok, so I could have another neuron for the speed.  Then the bike controller will be about keeping the bike close to the velocity produced by the neural network.
+
+As far as I can see, the big disadvantage to this method is that the neural net output is not used in the map planning.  What if I go down a street that is blocked by roadworks, the nn says the only open path is backwards.  What does the map planner do in that case?  Why wouldn't it just say to turn round and go back again?  Actually that is reasonably copewithable, because I could put something in that says that if the nn output is closer to a different map path then the original one could be temporarily marked as blocked.  A traffic light would cause the direction to be the same, but with zero velocity.
+
+So the nn architecture will be something like:
+
+
+                         images fed in
+                     ||||||||||||||||||||||
+                     vvvvvvvvvvvvvvvvvvvvvv
+                       convolutional layer
+                           ||||||||||
+                           vvvvvvvvvv
+                       convolutional layer
+                             ||||||
+      velocity               vvvvvv
+      chosen by        convolutional layer
+      map finder              ||||
+          |                   vvvv
+          +---------> fully-connected layer
+                      |||||||||||||||||||||
+                      vvvvvvvvvvvvvvvvvvvvv
+                      fully-connected layer
+                      |||||||||||||||||||||
+                      vvvvvvvvvvvvvvvvvvvvv
+                      fully-connected layer
+                               | |
+                               v v
+                       two softmax neurons
+                      giving final velocity
+
+Wednesday 18 October 2017
+
+So a lot has changed in the last few days.  The training has started, and consequently the neural net architecture has changed a lot - see the design in yesterday's log entry, above.  I need to generate training data from my simulator.  So I need to generate a bunch of consecutive world states and convert them into images.  I'm tired today and not that clear about what to do.  There definitely needs to be a live view of the camera images, a live view of the actual direction of the robot, and a live view of the required direction of the robot.  The required direction is decided at random by the computer.  So the output of the GUI is a time-varying sequence of images, a time-varying sequence of actual velocities, and a time-varying sequence of required velocities.
+
+So the components of this data generator are:
+
+1) A function that takes the current world state and a time period and outputs the new world state at the end of the time period.
+
+2) A function that converts the world state into a set of camera images.
+
+* * *
+
+This only needs to be basic.  I just need to display the images, and the velocity and direction parts can be displayed in the command-line.  I have found a link:
+
+http://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_gui/py_video_display/py_video_display.html
+
+which allows you to make images and display them one after another to make a video.
+
+Thursday 19 October 2017
+
+I'm installing OpenCV from source.  This is so I can produce live videos from stills using Python.  The guides I used are
+
+https://docs.opencv.org/trunk/d7/d9f/tutorial_linux_install.html
+
+https://stackoverflow.com/questions/20953273/install-opencv-for-python-3-3
+
+The cmake configuration command I am using (in Arch Linux) is:
+
+cmake -D PYTHON3_EXECUTABLE=/usr/bin/python3.6 -D PYTHON_INCLUDE_DIR=/usr/include/python3.6m -D PYTHON_LIBRARY=/usr/lib/libpython3.so -D PYTHON3_NUMPY_INCLUDE_DIRS=/usr/lib/python3.6/site-packages/numpy/core/include/ ..
+
+OK, opencv is working now.
+
+I have found a code example for using opencv to make a video:
+
+http://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_gui/py_video_display/py_video_display.html
+
+And another one about how to capture keyboard input in Python:
+
+https://stackoverflow.com/questions/13207678/whats-the-simplest-way-of-detecting-keyboard-input-in-python-from-the-terminal/43065186#43065186
+
+Monday 30 October 2017
+
+The game is done.  I am now training the neural net on the data.  It's taking 66s to to do 100 data points, so 0.7s per data point.  If I need to do, say 100,000 data points to train, then that is 70,000s, which is 19 hours.
+
+Wednesday 1 November 2017
+
+I am still messing around with the navigation neural network, trying to train it.  Starting the test numbers at one now, since I haven't recorded them before, this is what is happening:
+
+Test 1:
+
+Here is the summary from keras:
+
+____________________________________________________________________________________________________
+Layer (type)                     Output Shape          Param #     Connected to                     
+====================================================================================================
+image_in (InputLayer)            (None, 200, 200, 5, 3 0                                            
+____________________________________________________________________________________________________
+batch_normalization_1 (BatchNorm (None, 200, 200, 5, 3 12          image_in[0][0]                   
+____________________________________________________________________________________________________
+conv3d_1 (Conv3D)                (None, 100, 100, 3, 5 410         batch_normalization_1[0][0]      
+____________________________________________________________________________________________________
+conv3d_2 (Conv3D)                (None, 50, 50, 2, 10) 1360        conv3d_1[0][0]                   
+____________________________________________________________________________________________________
+conv3d_3 (Conv3D)                (None, 25, 25, 1, 20) 5420        conv3d_2[0][0]                   
+____________________________________________________________________________________________________
+conv3d_4 (Conv3D)                (None, 13, 13, 1, 20) 10820       conv3d_3[0][0]                   
+____________________________________________________________________________________________________
+conv3d_5 (Conv3D)                (None, 7, 7, 1, 20)   10820       conv3d_4[0][0]                   
+____________________________________________________________________________________________________
+conv3d_6 (Conv3D)                (None, 4, 4, 1, 20)   10820       conv3d_5[0][0]                   
+____________________________________________________________________________________________________
+conv3d_7 (Conv3D)                (None, 2, 2, 1, 25)   13525       conv3d_6[0][0]                   
+____________________________________________________________________________________________________
+flatten_1 (Flatten)              (None, 100)           0           conv3d_7[0][0]                   
+____________________________________________________________________________________________________
+velocity_in (InputLayer)         (None, 2)             0                                            
+____________________________________________________________________________________________________
+concatenate_1 (Concatenate)      (None, 102)           0           flatten_1[0][0]                  
+                                                                   velocity_in[0][0]                
+____________________________________________________________________________________________________
+batch_normalization_2 (BatchNorm (None, 102)           408         concatenate_1[0][0]              
+____________________________________________________________________________________________________
+dense_1 (Dense)                  (None, 50)            5150        batch_normalization_2[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_3 (BatchNorm (None, 50)            200         dense_1[0][0]                    
+____________________________________________________________________________________________________
+dense_2 (Dense)                  (None, 25)            1275        batch_normalization_3[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_4 (BatchNorm (None, 25)            100         dense_2[0][0]                    
+____________________________________________________________________________________________________
+dense_3 (Dense)                  (None, 2)             52          batch_normalization_4[0][0]      
+====================================================================================================
+Total params: 60,372
+Trainable params: 60,012
+Non-trainable params: 360
+____________________________________________________________________________________________________
+
+I'm training it at 0.0002 with a decay of 1e-5.  The accuracy increased fairly nicely, but is now jumping around between 80 and 90.  Some possible explanations are that:
+1. The learning rate is not decreasing fast enough, which is why it is jumping.
+2. The model does not have enough degrees of freedom to get accurate.
+
+I'm inclined to 2, because I am not getting any really high accuracies in the jumping around, like I did in previous runs with a smaller decay rate.  The question now is where to add the extra degrees of freedom.  Making the final FC layers bigger is very expensive, but adding more layers to the convolutional nns is quite cheap.  I could also bung in extra batch normalisation between the convolutional layers.
+
+* * *
+
+The  next test I will try lr=0.0003 and decay=0.0002.  That will mean that lr=0.00015 by 5000 iterations and 1.15 after 8000 iterations.
+
+I found out how the learning decay works from 
+
+https://stats.stackexchange.com/questions/211334/keras-how-does-sgd-learning-rate-decay-work?newreg=952b722c990e476db1d1cfc41b434f1d
+
+It is like this:
+
+lr = self.lr * (1. / (1. + self.decay * self.iterations))
+
+So if I start at 0.0002 and want it to be 0.00005 at 10000 iterations then 
+
+0.00005 = 0.0002 / (1 + decay * 10000)  ==>  decay = 0.0003
+
+* * *
+
+Test 2:
+____________________________________________________________________________________________________
+Layer (type)                     Output Shape          Param #     Connected to                     
+====================================================================================================
+image_in (InputLayer)            (None, 200, 200, 5, 3 0                                            
+____________________________________________________________________________________________________
+batch_normalization_7 (BatchNorm (None, 200, 200, 5, 3 12          image_in[0][0]                   
+____________________________________________________________________________________________________
+conv3d_1 (Conv3D)                (None, 100, 100, 3, 5 410         batch_normalization_7[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_6 (BatchNorm (None, 100, 100, 3, 5 20          conv3d_1[0][0]                   
+____________________________________________________________________________________________________
+conv3d_2 (Conv3D)                (None, 50, 50, 2, 10) 1360        batch_normalization_6[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_5 (BatchNorm (None, 50, 50, 2, 10) 40          conv3d_2[0][0]                   
+____________________________________________________________________________________________________
+conv3d_3 (Conv3D)                (None, 25, 25, 1, 20) 5420        batch_normalization_5[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_4 (BatchNorm (None, 25, 25, 1, 20) 80          conv3d_3[0][0]                   
+____________________________________________________________________________________________________
+conv3d_4 (Conv3D)                (None, 13, 13, 1, 30) 16230       batch_normalization_4[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_3 (BatchNorm (None, 13, 13, 1, 30) 120         conv3d_4[0][0]                   
+____________________________________________________________________________________________________
+conv3d_5 (Conv3D)                (None, 7, 7, 1, 40)   32440       batch_normalization_3[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_2 (BatchNorm (None, 7, 7, 1, 40)   160         conv3d_5[0][0]                   
+____________________________________________________________________________________________________
+conv3d_6 (Conv3D)                (None, 4, 4, 1, 30)   32430       batch_normalization_2[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_1 (BatchNorm (None, 4, 4, 1, 30)   120         conv3d_6[0][0]                   
+____________________________________________________________________________________________________
+flatten_1 (Flatten)              (None, 480)           0           batch_normalization_1[0][0]      
+____________________________________________________________________________________________________
+velocity_in (InputLayer)         (None, 2)             0                                            
+____________________________________________________________________________________________________
+concatenate_1 (Concatenate)      (None, 482)           0           flatten_1[0][0]                  
+                                                                   velocity_in[0][0]                
+____________________________________________________________________________________________________
+batch_normalization_10 (BatchNor (None, 482)           1928        concatenate_1[0][0]              
+____________________________________________________________________________________________________
+dense_1 (Dense)                  (None, 50)            24150       batch_normalization_10[0][0]     
+____________________________________________________________________________________________________
+batch_normalization_9 (BatchNorm (None, 50)            200         dense_1[0][0]                    
+____________________________________________________________________________________________________
+dense_2 (Dense)                  (None, 25)            1275        batch_normalization_9[0][0]      
+____________________________________________________________________________________________________
+batch_normalization_8 (BatchNorm (None, 25)            100         dense_2[0][0]                    
+____________________________________________________________________________________________________
+dense_3 (Dense)                  (None, 2)             52          batch_normalization_8[0][0]      
+====================================================================================================
+Total params: 116,547
+Trainable params: 115,157
+Non-trainable params: 1,390
+____________________________________________________________________________________________________
+0.31539732217788696
+
+(Bear in mind that the timing at the bottom is flawed, because this model was already being trained at the time.  The actual time for this net is about 0.12s.)
+
+The training rate is 0.0002 and the decay is 3e-6.
+
+It went up to 90% nice and smooth, but then dropped to 80% which is probably bad.  Am going to try loading it again but setting the training step to 0.00005.  I did this, and it went up to 90ish% again, but then dropped to 69%.  Am trying it again, starting from the 90% save, but with a training step of 0.00002. ... This is not working.  It jumped down to 87% and now its up to 96%.  Will try with an even smaller training step of 0.00001.
+
+I seem to be halving the learning rate every 800 or so samples. So:
+
+1 / (1 + decay * 800) = 0.5
+                    2 = 1 + decay * 800
+                    1 = decay * 800
+                decay = 1 / 800
+                      = 1.25e-3
+
+I'm getting now up to 93% with a training step of 0.000005 and a decay of 1.25e-3.  This is in the first cycle - but in the second cycle it is back down to 74%.  I think I will try training it all night (is now 22:31).  The 1.25e-3 training rate decay seems a bit steep - what about 2e-4?  I'll try that.
+
+Thursday 2 November 2017
+
+It's been training all night, and it is bouncing around quite a lot, but is mostly high 80s and low 90s.  The obvious reason for this is that the training rate is too high, but my intuition is that it is not that, because it is already pretty low, and didn't seem to get better yesterday when I was tuning it down.  I've got a feeling that this is a sort of threshold.  It actually could be reasonable that it doesn't right up to 100%.  There are different ways of driving through the game.  Probably if you got two different people to play exactly the same game and calculated the accuracy of one against the other, it wouldn't be near 100% because there are different ways of doing it.  In other words, for all I know it might be good enough now.  So I need to write the program for running the game.  I think this is a problem that needs concurrency.  The difficulty at the moment is that the game has to pause for 0.12 seconds each time the neural net runs.
+
+I'd be pretty surprised if the net was done yet but the point is that I can't really tell, because the real validation is not whether it exactly conforms to the route that I chose when I was playing the game, but if it can navigate without collisions.
+
+One thought that occurs to me is that the NVidea neural network had about 1100 input neurons to the FC layer.  Mine only has 50.  Maybe I should get rid of the final convolutional layer so that the convolutional net has a bigger output and make the FC input bigger.
+
+The program for evaluating has these components:
+
+1. a function that takes in the neural net model, a batch of world states going back in time and the target velocity, and calculates the best velocity (this is just a wrapper around the neural network)
+2. a function that takes in the world state and a time step and updates the world state
+
+The idea is that function (2) will be run in a loop at close to real time.  It will append the world states to a list.  This list and also the velocity that is fed into (2) in the world state will be accessible to (1), which will run in a separate process.
+
+I'm finding that this concurrent stuff is an absolute pain in Python.  I would like to give Erlang a try but am not sure how to run the neural net from Erlang.  If I just make the neural net into a shell script it will have to be loaded from file for every single run, which will slow things down.  I think I need to look into erlports.
+
+Friday 3 November 2017
+
+I've found a good-looking recent paper on robot navigation using a single 360 degree camera and a convolutional neural network - see lingyan17 in the references.  I haven't read it all yet but it looks like it might be helpful.  However I think it might be only with static surroundings.
+
+I have spent all day today and a lot of yesterday skimming an Erlang tutorial and I think I have enough of a hang of it now to get started tomorrow.
+
+Saturday 4 November 2017
+
+I think I will try using AdaDelta for the optimiser.  It's like Adam but automatically updates the learning rate.
+
+Monday 6 November 2017
+
+I see that note about AdaDelta from Saturday.  Not too sure now.  I vaguely recall that Adam is an improvement on AdaDelta.  Will have to check.
+
+The task now is to do the training evaluator.  I need:
+
+1. a Python module that provides a function that takes in the five selected world states going back in time and the target velocity, and calculates the best velocity (this is just a wrapper around the neural network)
+
+2. a Python or Erlang function that takes in the world state and a time step and updates the world state
+
+3. a Python function that takes in the world state and updates a gui window with it
+
+4. a Python function that does one batch of training
+
+5. some Erlang that ties all this together.  It should run a few minutes of training, then run the simulation with the trained net while showing the gui and rate it by how long it goes without crashing, then run some more training, etc.
+
+One thing I'm not sure of here is whether to read the net from file initially and then pass it around, or to read and write directly from file.  I'm inclined to the latter, because firstly this process takes a long time and it's good to keep saving the net in case of crashes.  Secondly, it might be a faff to pass the model around in Erlang and I don't really know how to do it.
+
+Tuesday 7 November 2017
+
+I have tried training over the whole data set using mean_absolute_error and with categorical_crossentropy.  The other parameters were kept the same and were: lr=0.001, decay=3e-5.  They both crash the bike quite often when they play the game but my impression is that the categorical_crossentropy is a little bit better.
+
+Wednesday 8 November 2017
+
+The task now is to:
++ speed up the program that runs the game with the neural net making the decisions
++ experiment with the metaparameters of the net to try to improve its performance at the game
+
+The game seems to delay for at least a second while it is deciding what to do, but when I time the neural net by itself it only takes 0.003 seconds to run.
+
+I have done cProfile on the auto game.  It timed it for 142s.  The tottime of _solve_geometry was 25s.  The main aim here is to reduce the pauses while it works out what to do.  There are three functions that run in the pauses: predict_velocity, convert_data_points and update_velocity. ... OK the reulsts are:
+    convert_data_points 0s
+    predict_velocity 71s
+    update_velocity 0s
+
+In predict_velocity, 100% of the time is spent in convert_data.  The neural net has a neglible cost.  ... In convert_data 87% of the time is spent in worldstate2images from the training module, and 13% is spent in make_batch from the training module.  ... I have now reduced convert_data to 0.252s per hit, down from 6.5s per hit.  Good, but needs to be even faster.
+
+So I have profiled the three functions that are in the slow if statement again.  The results are:
+    convert_data_points: 0.008s
+    predict_velocity: 2.274s
+    update_velocity: 0s
+
+So it is still predict_velocity that is the hog.  In predict_velocity, 88% of the time is in convert_data and 13% in running the neural net.  convert_data takes 0.252s per hit.   In convert_data, 99% of the time is spent in make_batch, which has 1692us per hit.  87% of the time in make_batch is spent in i_for_n_seconds_ago. ... I have improved i_for_n_seconds a bit, so that it is now only 71% of make_batch. ... I have made i_for_n_seconds use numpy instead and it's down from 537us per hit to 120us per hit.
+
+Thursday 9 November 2017
+
+Today I am profiling the data conversion in the trainer.  The main function spends 93% calling convert_data.  It is 20s per hit. ... In convert_data, 85% is spent in world_state2images and 15% in make_batch.  In worldstate2images, 100% of the time is spent in w._calculate_small_images.
+
+Friday 10 November 2017
+
+A bit of experimentation with the neural net this morning.
+
+34d886d9df) During training it gets up to about 80% quite smoothly by cycle 39 and then starts to leap between 100% and 75% and in between.  The game doesn't play very well either.
+
+Tuesday 14 November 2017
+
+I am trying to speed up the evaluator for the navigation neural network.  The biggest single time consumer is _solve_geometry, which takes 53s, which is 44% of the total.
+
+Thursday 16 November 2017
+
+Just using the default values is not that good.  Trying removing the batchnorm layer immediately after the convolutional layers and adding an extra dense layer of 100 neurons.  It's maybe a bit better, but still not that good.  It's very jumpy.  I'm going to try a
+
+I have been having a look at the Kitti data set.
+
+Monday 20 November 2017
+
+I'm messing around with the microbit and the webcam to get ready for recording.
+
+Wednesday 22 November 2017
+
+Today I built the stand for the camera and microbit to go on the bike.  What now for today?  I think I need to do the maps.  The maps module will take the GPS reading, the direction and the destination coordinates as input, and will output a velocity.
+
+Saturday 25 November 2017
+
+My GPS receiver came today.  It works well.  I connected it up to my laptop and read the data into a Python program.  It produces many lines of output, but the important one for me is the line starting with $GPGLL with the latitude and longitude.
+
+Tuesday 28 November 2017
+
+The routing algorithm seems to be working fine now.  The next thing is to do is to get the data collector program to work.  The data to collect is:
+  + gps readings
+  + accelerometer readings
+  + compass readings
+  + photos
+  + target bearing from map route planner
+
+So it needs to keep generating nearby destinations.
+
+Wednesday 29 November 2017
+
+The serial ports can be listed with this command:
+
+    ls -la /dev/serial/by-id
+
+Thursday 30 November 2017
+
+I'm thinking about how to design the interface.  The physical interface is the 25 LED block on the front of the microbit, and the two buttons.  When I am cycling around, what I need is:
+
+1 Need to know:
+    1 If the program is working correctly.
+    2 Whether it is currently recording.  If not, is it because:
+        1 I have paused it.
+        2 I have arrived at the destination.
+    3 The direction to go in.
+    4 When a new destination has just been generated.
+2 My inputs:
+    1 toggle recording
+    2 generate new destination
+
+So I need to pass the required display to the microbit as a bytestring.  The easiest way is a set of byte codes:
+
+ref. number       1.1  1.2  1.3  1.4
+number of states  2    3    16   2 
+
+So the total number of display state combinations is 2 x 3 x 16 x 2 = 192.  So the display state can be expressed as one byte.  If I give 1.2 four states instead of 3 and ignore one, then I can put it as follows:
+ 
+    12345678
+    ________
+    ^^^^^^^^
+    |||||||new destination (1.4)
+    |||direction (1.3)
+    |current recording state
+    error state
+
+* * *
+
+I'm thinking about how to improve the design of the 
+
+Saturday 2 December 2017
+
+I want a standard design for a long-running program, i.e. one that is not just an ordinary function call without loops or recursion.
+
+PsuedoHaskell:
+ 
+
+data State = code
+
+main = mainloop initialState
+  where
+    initialState = code
+
+data Input = code
+
+readInput :: IO Input
+readInput = code
+
+data Output = code
+
+sendOutput :: Output -> IO () 
+sendOutput output = code
+
+state2output :: State -> Output
+state2output state = code
+
+updateState :: State -> Input -> State
+updateState state input = code
+
+mainloop :: State -> IO()
+mainloop state = do
+    input <- readInput
+    sendOutput (state2output state)
+    mainloop (updateState state input)
