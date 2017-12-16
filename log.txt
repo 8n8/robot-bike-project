@@ -728,6 +728,50 @@ updateState state input = code
 
 mainloop :: State -> IO()
 mainloop state = do
-    input <- readInput
+    input <- readInput state
     sendOutput (state2output state)
     mainloop (updateState state input)
+
+Wednesday 6 December 2017
+
+The microbit periodically crashes.  I have just reproduced this by:
+1) Unplugging the microbit and plugging it back in.
+2) Calibrating the compass.
+3) Run main_loop.
+4) Wait till the counter gets to 1592, without pressing the buttons.
+
+I tried to do the above again, but without unplugging, just reflashing.  I got a memory allocation error message flashed across the microbit LEDs.  It seems to be a plausible theory that the current code runs the microbit at the very edge of its memory capacity.  This could be causing these random crashes.
+
+I can trigger the crash faster if I keep pressing button B.
+
+Friday 15 December 2017
+
+I am just getting ready for the first recording session, where I go out and cycle around gathering data.  Bug list:
+
+1) stand on bike doesn't hold cables in place.  Having to use tape.
+2) main_loop doesn't work out for itself which serial ports are which and which webcam is which
+3) laptop battery runs down too quickly
+
+* * *
+
+I have just been for the first ride (with this version of the program).  The main problem was that I couldn't be sure of the route from the microbit display.  I think the main reason was that it didn't tell me soon enough, although there was some jumping around which made it difficult too.  I need to know well in advance which way to go at a junction, so I can be on the correct side of the road.
+
+* * *
+
+I tried fiddling with the route planner to make it work better.  The main change I made was to make the target direction be the direction at the point on the route 30m ahead.  I found some errors in the code as well, which I fixed.  Then I went for another test ride.  There were still problems:
+1) Quite a lot of flickering.
+2) Could not reach destination.
+
+It could be that (2) is due to the threshold distance between the current position and the destination is too small.
+
+The only explanation I can think of for (1) is that the position estimates are not very accurate.  I am not very happy with this theory though, as I think the position estimates are all right to within around 5 metres, which doesn't seem enough to make the router think I am on a different road and change the route.
+
+I suppose it could also be the compass reading skipping around.  It might help to have Kalman filters on both the compass readings and the position readings.
+
+It's late now, but I think tomorrow I should:
+1) read up how Kalman filters or similar work and implement it for the compass and position readings
+2) go for a walk to test the routing system so I can test it properly and observe what it is doing without crashing into things
+
+Saturday 16 December 2017
+
+I have just plotted the compass readings from the last bike ride, and they are very very noisy, often jumping around by as much as 2 radians.  I could buy another compass, but how do I know that it will be better, and I'm skint.  I'm going to try using a Kalman filter to smooth out the readings.  I have put my explanation of how it works in the file kalman_filter.tex in this directory.

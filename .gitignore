@@ -1,3 +1,6 @@
 *
 !log.txt
 !.gitignore
+!kalman_filter.tex
+!references.bib
+!nvidia_paper.pdf

@@ -1,0 +1,73 @@
+\documentclass{article}
+\usepackage[hidelinks]{hyperref}
+\usepackage{bm}
+\usepackage{microtype}
+\usepackage[backend=biber]{biblatex}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\addbibresource{references.bib}
+
+\title{Kalman filter}
+\author{True Ghiassi}
+\begin{document}
+\maketitle
+\begin{quote}
+This is a description of the Kalman filter used for smoothing out noisy readings from robot sensors.
+\end{quote}
+The equation is
+\begin{align}
+\bm{x}_k = \bm{F}_k\bm{x}_{k-1} + \bm{B}_k\bm{u}_k + \bm{w}_k \label{mainEquation}
+\end{align}
+(see \cite{wpKalman}).  The variables are described in Table \ref{variableDescriptions}.
+\begin{table}
+\begin{tabular}{lp{10cm}}\toprule
+Name & Description \\ \midrule
+$\bm{x}_k$ & The $k$th state of the system.  This is a vector containing all the parameters needed to describe the system. \\
+$\bm{F}_k$ & A matrix that can be multiplied by $\bm{x}$ to predict its next value.  This matrix would embody some physical rule that is known about the system.   \\
+$\bm{x}_{k-1}$ & The state of the system one step before $\bm{x}_k$. \\
+$\bm{B}_k$ & This is a matrix that can be multiplied by the vector $\bm{u}_k$.  It embodies a prediction of how the control input $\bm{u}_k$ will affect the next state of the system. \\
+$\bm{w}_k$ & This is the noise in the signal. \\ \bottomrule
+\end{tabular}
+\caption{Variable descriptions for Equation \ref{mainEquation}}
+\label{variableDescriptions}
+\end{table}
+\section{Covariance matrix}
+The covariance matrix is a matrix whose element in the $i,j$ position is the covariance (see Section \ref{covariance}) between the $i$th and $j$th elements of a random vector (see Section \ref{randomVector}).
+\section{Random vector} \label{randomVector}
+A random vector is a vector whose components are random variables (see Section \ref{randomVariable}) on the same probability space (see Section \ref{probabilitySpace}) as each other \cite{wpRandomVector}.
+\section{Probability space} \label{probabilitySpace}
+A probability space is a model of a random experiment (see Section \ref{randomExperiment}).  It contains the sample space (see Section \ref{sampleSpace}), the event space (see Section \ref{eventSpace}) and a function that calculates the probability of each event \cite{wpProbabilitySpace}.
+\section{Event space} \label{eventSpace}
+An event space $B$ is a collection of events (see Section \ref{event}) that has three properties:
+\begin{enumerate}
+\item it contains the empty set
+\item for every event it contains, it also contains the complement of the event
+\item if $A_1, A_2, ...\in B$, then $\cup^\infty_{i=1}A_i\in B$.
+\end{enumerate}
+(This section is almost a quote from page 1 of reference \cite{shum}).
+\section{Event} \label{event}
+An event is a subset of the sample space (see Section \ref{sampleSpace}) of a random experiment (see Section \ref{randomExperiment}) \cite{shum}.
+\section{Sample space} \label{sampleSpace}
+The sample space of a random experiment (see Section \ref{randomExperiment}) is the set of all the sample points (see Section \ref{samplePoint}) of the experiment.
+\section{Covariance} \label{covariance}
+The covariance between two random variables $X$ and $Y$ is
+\[\text{cov}\left(X, Y\right) = E\left[\left(X-E[X]\right)\left(Y-E[Y]\right)\right]\]
+(see reference \cite{wpCovariance}).
+The notation $E[X]$ means the expectation of $X$ (see Section \ref{expectation}).
+\section{Random variable} \label{randomVariable}
+A random variable is a function that has a sample point (Section \ref{samplePoint}) as input and a real number as output \cite{randomVariable}.
+\section{Sample point} \label{samplePoint}
+A sample point is one of the possible outcomes of a random experiment (Section \ref{randomExperiment}). \cite{samplePoint}
+\section{Expectation} \label{expectation}
+``
+\begin{quote}
+Let $X$ be a random variable with a finite number of finite outcomes $x_1, x_2, ... , x_k$ occuring with probabilities $p_1, p_2, ..., p_k$, respectively.  The \textbf{expectation} of $X$ is defined as
+\[E[X] = x_1p_1 + x_2p_2 + ... + x_kp_k.\]
+\end{quote}
+''
+\cite{wpExpectedValue} 
+(See Section \ref{randomVariable} for the definition of a random variable.)
+\section{Random experiment} \label{randomExperiment}
+``A random experiemnt is an experiment or a process for which the outcome cannot be predicted with certainty.'' \cite{randomExperiment}
+\printbibliography
+\end{document}
