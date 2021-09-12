@@ -14,24 +14,54 @@
 \begin{quote}
 This is a description of the Kalman filter used for smoothing out noisy readings from robot sensors.
 \end{quote}
-The equation is
+As the sensors read in the measurements, $\bm P$ and $\bm x$ are continually updated according to these equations: 
 \begin{align}
-\bm{x}_k = \bm{F}_k\bm{x}_{k-1} + \bm{B}_k\bm{u}_k + \bm{w}_k \label{mainEquation}
+\bm P_{k|k} = \bm P_{k|k-1} - \bm K_k \bm H_k \bm P_{k|k-1}
 \end{align}
-(see \cite{wpKalman}).  The variables are described in Table \ref{variableDescriptions}.
+and
+\begin{align}
+\bm x_{k|k} = \bm x_{k|k-1}+\bm K_k\bm y_k
+\end{align}
+where
+\begin{align}
+  \bm P_{k|k-1} = \bm F_k \bm P_{k-1|k-1}\bm F_k^T+\bm Q_k
+\end{align}
+\begin{align}
+  \bm K_k=\bm P_{k|k-1} \bm H_k^T\bm S_k^{-1}
+\end{align}
+\begin{align}
+  \bm S_k=\bm R_k+\bm H_k\bm P_{k|k-1}\bm H_k^T
+\end{align}
+\begin{align}
+  \bm x_{k|k-1} = \bm F_k \bm x_{k-1|k-1} + \bm B_k\bm u_k
+\end{align}
+\begin{align}
+  \bm y_{k} = \bm z_k - \bm H_k\bm x_{k|k-1}
+\end{align}
+(see \cite{wpKalman}).  The variables that are not defined by equations 3 to 7 are described in Table \ref{variableDescriptions}.
 \begin{table}
 \begin{tabular}{lp{10cm}}\toprule
 Name & Description \\ \midrule
-$\bm{x}_k$ & The $k$th state of the system.  This is a vector containing all the parameters needed to describe the system. \\
-$\bm{F}_k$ & A matrix that can be multiplied by $\bm{x}$ to predict its next value.  This matrix would embody some physical rule that is known about the system.   \\
-$\bm{x}_{k-1}$ & The state of the system one step before $\bm{x}_k$. \\
-$\bm{B}_k$ & This is a matrix that can be multiplied by the vector $\bm{u}_k$.  It embodies a prediction of how the control input $\bm{u}_k$ will affect the next state of the system. \\
-$\bm{w}_k$ & This is the noise in the signal. \\ \bottomrule
+$\bm{x}$ & The state of the system.  This is a vector containing all the parameters needed to describe the system. \\
+$\bm{F}$ & A matrix that can be multiplied by $\bm{x}$ to predict its next value.  This matrix embodies knowledge about the system, such as physics laws. \\
+$\bm{u}$ & This is a vector that contains the control inputs.  If the system was a car it might be the steering wheel angle and the accelerator pedal position. \\
+$\bm{B}$ & This is a matrix that can be multiplied by the vector $\bm{u}$.  It embodies a prediction of how the control input $\bm{u}$ will affect the next state of the system. \\
+$\bm{w}$ & This is the noise from the system.  It represents the random differences between the theoretical predictions of the system behaviour and the actual behaviour.  It is assumed to be Gaussian white noise with zero mean.\\
+$\bm z$ & The measurement of the state of the system. \\
+$\bm H$ & It converts the state vector into the observations vector. \\
+$\bm v$ & The observational noise introduced by inaccuracies in the measurements.  It is assumed to be Gaussian white noise with zero mean. 
+\\
+$*_{n|m}$ & The estimate of the value of $*$ at time $n$ given the measurements up to and including time $m$.\\
+$*_n$ & The value of $*$ at time $n$.\\
+$\bm P$ & The error covariance matrix (see \ref{covarianceMatrix}).  This is a measure of how accurate the state estimate is.\\
+$\bm Q$ & The covariance matrix (see Section \ref{covarianceMatrix}) of $\bm w$.\\
+$\bm R$ & The covariance matrix (see Section \ref{covarianceMatrix}) of $\bm v$. \\
+$k$ & The current time.\\ \bottomrule
 \end{tabular}
 \caption{Variable descriptions for Equation \ref{mainEquation}}
 \label{variableDescriptions}
 \end{table}
-\section{Covariance matrix}
+\section{Covariance matrix} \label{covarianceMatrix}
 The covariance matrix is a matrix whose element in the $i,j$ position is the covariance (see Section \ref{covariance}) between the $i$th and $j$th elements of a random vector (see Section \ref{randomVector}).
 \section{Random vector} \label{randomVector}
 A random vector is a vector whose components are random variables (see Section \ref{randomVariable}) on the same probability space (see Section \ref{probabilitySpace}) as each other \cite{wpRandomVector}.

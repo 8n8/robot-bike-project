@@ -775,3 +775,65 @@ It's late now, but I think tomorrow I should:
 Saturday 16 December 2017
 
 I have just plotted the compass readings from the last bike ride, and they are very very noisy, often jumping around by as much as 2 radians.  I could buy another compass, but how do I know that it will be better, and I'm skint.  I'm going to try using a Kalman filter to smooth out the readings.  I have put my explanation of how it works in the file kalman_filter.tex in this directory.
+
+Tuesday 19 December 2017
+
+I feel like the main_loop.py script is becoming messy and needs rethinking, especially error handling.  What do I want to happen if there are errors?  The answer is that it depends on the error.  At the moment my error struct is:
+
+class Errors(TypedDict):
+    """
+    It contains all the error messages arising from reading the sensors and
+    calculating the route.
+    """
+    route: str
+    gps_speed: str
+    gps_position: str
+    gps_buffer_too_small: str
+    photo_ok: bool
+    microbit: str
+    random_destination: str
+
+The ways I can respond to an error are:
+
+1) panic
+2) log it
+3) ignore it
+4) some custom response to an error
+
+The question is: what is the point of error handling?  Why don't I just assume everything will work?  The answers are:
+
+1) Often an error can be worked around and needn't crash the whole program.
+2) If you handle the error you can control the way it fails.
+
+I need to decide on a response to each possible combination of errors.  So I should make an error response enum containing all the possible responses.  Then I can make a function that takes in the error struct and decides on the response to take.  There should be an error_response member in the main state struct, and the main loop stop condition and IO functions can do the actions.
+
+The only things I can do in response to an error are
+1) keep trying
+2) log it
+3) flash the warning signal on the LEDs
+4) end the program
+
+The bad things that can happen if my program doesn't work are:
+1) it records / doesn't record when I don't want it to
+
+I think the main thing it should be is:
+1) it tells me when it is not working, both on the LEDs and in a more detailed log
+2) it is as forgiving as possible, i.e. it doesn't fail unless it really needs to 
+
+The responses to the 7 types of error I know about are:
+1) routing:
+    + just stop the program after a couple of tries, light up the LEDs to tell me and put the error message in the log
+2) gps_*:
+    + stop the program after 1.3 seconds worth ...
+
+The thing is, my program can fail.  So however well I do it, if a dog bites off the webcam then I can't record the images, and so the data is no use and the program might as well stop.  But why do I need to bother about this?  The reason is that unless I actually handle the error and have "if (error_ocurred) {stop now!}", then it might carry on recording, but without some of the important data, or with corrupted values, so that I end up with junk data.  Or it might not be obvious on the LED display that something has gone wrong, so I would carry on cycling round, wasting time, when nothing is happening.
+
+So my error-handling function needs to say whether to carry on or stop the program, what message to put in the log, and what to display on the LEDs.
+
+How would Erlang handle this?
+
+Each sensor reader could be in a separate process, looping round and round and sending out a message when it got a valid reading.  Then the main thread could be sitting there waiting for the sensor readings to come in.  There would be some sort of timeout set on each sensor reader.
+
+Wednesday 20 December 2017
+
+
